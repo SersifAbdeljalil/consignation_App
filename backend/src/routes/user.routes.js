@@ -1,20 +1,21 @@
 // src/routes/user.routes.js
-const express      = require('express');
-const router       = express.Router();
-const userCtrl     = require('../controllers/user.controller');
+const express        = require('express');
+const router         = express.Router();
+const userCtrl       = require('../controllers/user.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const roleMiddleware = require('../middlewares/role.middleware');
 
-// Toutes les routes nécessitent d'être connecté + être admin
-router.use(authMiddleware);
-router.use(roleMiddleware(['admin']));
+// ── Routes Admin (nécessitent rôle admin) ────
+router.get('/',                     authMiddleware, roleMiddleware('admin'), userCtrl.getUsers);
+router.get('/roles',                authMiddleware, roleMiddleware('admin'), userCtrl.getRoles);
+router.get('/:id',                  authMiddleware, roleMiddleware('admin'), userCtrl.getUserById);
+router.post('/',                    authMiddleware, roleMiddleware('admin'), userCtrl.createUser);
+router.put('/:id',                  authMiddleware, roleMiddleware('admin'), userCtrl.updateUser);
+router.patch('/:id/toggle-actif',   authMiddleware, roleMiddleware('admin'), userCtrl.toggleUserActif);
+router.patch('/:id/reset-password', authMiddleware, roleMiddleware('admin'), userCtrl.resetMotDePasse);
 
-router.get('/',                        userCtrl.getUsers);          // GET    /api/users
-router.get('/roles',                   userCtrl.getRoles);          // GET    /api/users/roles
-router.get('/:id',                     userCtrl.getUserById);       // GET    /api/users/:id
-router.post('/',                       userCtrl.createUser);        // POST   /api/users
-router.put('/:id',                     userCtrl.updateUser);        // PUT    /api/users/:id
-router.patch('/:id/toggle-actif',      userCtrl.toggleUserActif);  // PATCH  /api/users/:id/toggle-actif
-router.patch('/:id/reset-password',    userCtrl.resetMotDePasse);   // PATCH  /api/users/:id/reset-password
+// ── Routes Utilisateur connecté (tous les rôles) ──
+router.put('/telephone',             authMiddleware, userCtrl.updateTelephone);
+router.post('/verifier-telephone',   authMiddleware, userCtrl.verifierTelephone);
 
 module.exports = router;

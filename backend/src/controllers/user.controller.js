@@ -8,7 +8,7 @@ const getUsers = async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT u.id, u.nom, u.prenom, u.username, u.matricule,
-              u.badge_ocp_id, u.entite, u.actif, u.created_at,
+              u.telephone, u.badge_ocp_id, u.entite, u.actif, u.created_at,
               r.nom AS role, r.id AS role_id
        FROM users u
        JOIN roles r ON u.role_id = r.id
@@ -27,16 +27,14 @@ const getUserById = async (req, res) => {
     const { id } = req.params;
     const [rows] = await db.query(
       `SELECT u.id, u.nom, u.prenom, u.username, u.matricule,
-              u.badge_ocp_id, u.entite, u.actif, u.created_at,
+              u.telephone, u.badge_ocp_id, u.entite, u.actif, u.created_at,
               r.nom AS role, r.id AS role_id
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.id = ?`,
       [id]
     );
-    if (!rows.length) {
-      return error(res, 'Utilisateur introuvable', 404);
-    }
+    if (!rows.length) return error(res, 'Utilisateur introuvable', 404);
     return success(res, rows[0], 'Utilisateur récupéré');
   } catch (err) {
     console.error('getUserById error:', err);
@@ -48,9 +46,8 @@ const getUserById = async (req, res) => {
 const createUser = async (req, res) => {
   try {
     const { nom, prenom, username, mot_de_passe, matricule,
-            badge_ocp_id, role_id, entite } = req.body;
+            telephone, badge_ocp_id, role_id, entite } = req.body;
 
-    // Validation champs obligatoires
     if (!nom || !prenom || !username || !mot_de_passe || !role_id) {
       return error(res, 'Champs obligatoires : nom, prenom, username, mot_de_passe, role_id', 400);
     }
@@ -58,48 +55,40 @@ const createUser = async (req, res) => {
       return error(res, 'Le mot de passe doit contenir au moins 6 caractères', 400);
     }
 
-    // Vérifier que le rôle existe
     const [roles] = await db.query('SELECT id FROM roles WHERE id = ?', [role_id]);
-    if (!roles.length) {
-      return error(res, 'Rôle invalide', 400);
-    }
+    if (!roles.length) return error(res, 'Rôle invalide', 400);
 
-    // Vérifier unicité username
     const [existUser] = await db.query('SELECT id FROM users WHERE username = ?', [username]);
-    if (existUser.length) {
-      return error(res, 'Ce nom d\'utilisateur est déjà pris', 409);
-    }
+    if (existUser.length) return error(res, 'Ce nom d\'utilisateur est déjà pris', 409);
 
-    // Vérifier unicité matricule si fourni
     if (matricule) {
       const [existMat] = await db.query('SELECT id FROM users WHERE matricule = ?', [matricule]);
-      if (existMat.length) {
-        return error(res, 'Ce matricule est déjà utilisé', 409);
-      }
+      if (existMat.length) return error(res, 'Ce matricule est déjà utilisé', 409);
     }
-
-    // Vérifier unicité badge_ocp_id si fourni
     if (badge_ocp_id) {
       const [existBadge] = await db.query('SELECT id FROM users WHERE badge_ocp_id = ?', [badge_ocp_id]);
-      if (existBadge.length) {
-        return error(res, 'Ce badge OCP est déjà utilisé', 409);
-      }
+      if (existBadge.length) return error(res, 'Ce badge OCP est déjà utilisé', 409);
     }
 
     const hash = await bcrypt.hash(mot_de_passe, 10);
 
     const [result] = await db.query(
-      `INSERT INTO users (nom, prenom, username, mot_de_passe, matricule, badge_ocp_id, role_id, entite)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nom, prenom, username, hash, matricule || null, badge_ocp_id || null, role_id, entite || null]
+      `INSERT INTO users (nom, prenom, username, mot_de_passe, matricule,
+                          telephone, badge_ocp_id, role_id, entite)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nom, prenom, username, hash,
+       matricule    || null,
+       telephone    || null,
+       badge_ocp_id || null,
+       role_id,
+       entite       || null]
     );
 
     const [newUser] = await db.query(
       `SELECT u.id, u.nom, u.prenom, u.username, u.matricule,
-              u.badge_ocp_id, u.entite, u.actif, u.created_at,
+              u.telephone, u.badge_ocp_id, u.entite, u.actif, u.created_at,
               r.nom AS role, r.id AS role_id
-       FROM users u
-       JOIN roles r ON u.role_id = r.id
+       FROM users u JOIN roles r ON u.role_id = r.id
        WHERE u.id = ?`,
       [result.insertId]
     );
@@ -115,59 +104,51 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nom, prenom, username, matricule, badge_ocp_id, role_id, entite, actif } = req.body;
+    const { nom, prenom, username, matricule,
+            telephone, badge_ocp_id, role_id, entite, actif } = req.body;
 
-    // Vérifier que le user existe
     const [exist] = await db.query('SELECT id FROM users WHERE id = ?', [id]);
-    if (!exist.length) {
-      return error(res, 'Utilisateur introuvable', 404);
-    }
+    if (!exist.length) return error(res, 'Utilisateur introuvable', 404);
 
-    // Vérifier unicité username si modifié
     if (username) {
-      const [existUser] = await db.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, id]);
-      if (existUser.length) {
-        return error(res, 'Ce nom d\'utilisateur est déjà pris', 409);
-      }
+      const [existUser] = await db.query(
+        'SELECT id FROM users WHERE username = ? AND id != ?', [username, id]
+      );
+      if (existUser.length) return error(res, 'Ce nom d\'utilisateur est déjà pris', 409);
     }
-
-    // Vérifier unicité matricule si modifié
     if (matricule) {
-      const [existMat] = await db.query('SELECT id FROM users WHERE matricule = ? AND id != ?', [matricule, id]);
-      if (existMat.length) {
-        return error(res, 'Ce matricule est déjà utilisé', 409);
-      }
+      const [existMat] = await db.query(
+        'SELECT id FROM users WHERE matricule = ? AND id != ?', [matricule, id]
+      );
+      if (existMat.length) return error(res, 'Ce matricule est déjà utilisé', 409);
     }
-
-    // Vérifier que le rôle existe si modifié
     if (role_id) {
       const [roles] = await db.query('SELECT id FROM roles WHERE id = ?', [role_id]);
-      if (!roles.length) {
-        return error(res, 'Rôle invalide', 400);
-      }
+      if (!roles.length) return error(res, 'Rôle invalide', 400);
     }
 
     await db.query(
       `UPDATE users SET
-        nom        = COALESCE(?, nom),
-        prenom     = COALESCE(?, prenom),
-        username   = COALESCE(?, username),
-        matricule  = COALESCE(?, matricule),
+        nom          = COALESCE(?, nom),
+        prenom       = COALESCE(?, prenom),
+        username     = COALESCE(?, username),
+        matricule    = COALESCE(?, matricule),
+        telephone    = COALESCE(?, telephone),
         badge_ocp_id = COALESCE(?, badge_ocp_id),
-        role_id    = COALESCE(?, role_id),
-        entite     = COALESCE(?, entite),
-        actif      = COALESCE(?, actif)
+        role_id      = COALESCE(?, role_id),
+        entite       = COALESCE(?, entite),
+        actif        = COALESCE(?, actif)
        WHERE id = ?`,
-      [nom, prenom, username, matricule, badge_ocp_id, role_id,
-       entite, actif !== undefined ? actif : null, id]
+      [nom, prenom, username, matricule, telephone,
+       badge_ocp_id, role_id, entite,
+       actif !== undefined ? actif : null, id]
     );
 
     const [updated] = await db.query(
       `SELECT u.id, u.nom, u.prenom, u.username, u.matricule,
-              u.badge_ocp_id, u.entite, u.actif, u.created_at,
+              u.telephone, u.badge_ocp_id, u.entite, u.actif, u.created_at,
               r.nom AS role, r.id AS role_id
-       FROM users u
-       JOIN roles r ON u.role_id = r.id
+       FROM users u JOIN roles r ON u.role_id = r.id
        WHERE u.id = ?`,
       [id]
     );
@@ -184,10 +165,7 @@ const toggleUserActif = async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await db.query('SELECT id, actif FROM users WHERE id = ?', [id]);
-    if (!rows.length) {
-      return error(res, 'Utilisateur introuvable', 404);
-    }
-    // Empêcher de désactiver son propre compte
+    if (!rows.length) return error(res, 'Utilisateur introuvable', 404);
     if (parseInt(id) === req.user.id) {
       return error(res, 'Vous ne pouvez pas désactiver votre propre compte', 400);
     }
@@ -211,9 +189,8 @@ const resetMotDePasse = async (req, res) => {
       return error(res, 'Le mot de passe doit contenir au moins 6 caractères', 400);
     }
     const [rows] = await db.query('SELECT id FROM users WHERE id = ?', [id]);
-    if (!rows.length) {
-      return error(res, 'Utilisateur introuvable', 404);
-    }
+    if (!rows.length) return error(res, 'Utilisateur introuvable', 404);
+
     const hash = await bcrypt.hash(nouveau_mot_de_passe, 10);
     await db.query('UPDATE users SET mot_de_passe = ? WHERE id = ?', [hash, id]);
     return success(res, null, 'Mot de passe réinitialisé avec succès');
@@ -234,7 +211,54 @@ const getRoles = async (req, res) => {
   }
 };
 
+// ─── MODIFIER TÉLÉPHONE (utilisateur connecté) ────────────
+const updateTelephone = async (req, res) => {
+  try {
+    const { telephone } = req.body;
+    if (!telephone) return error(res, 'Numéro de téléphone requis', 400);
+
+    await db.query(
+      'UPDATE users SET telephone = ? WHERE id = ?',
+      [telephone, req.user.id]
+    );
+    console.log(`📱 SMS de vérification envoyé au ${telephone}`);
+    return success(res, null, 'Téléphone mis à jour, SMS de vérification envoyé');
+  } catch (err) {
+    console.error('updateTelephone error:', err);
+    return error(res, 'Erreur serveur', 500);
+  }
+};
+
+// ─── VÉRIFIER CODE SMS ────────────────────────────────────
+const verifierTelephone = async (req, res) => {
+  try {
+    const { code } = req.body;
+    // Code fixe pour simulation — remplacer par vrai service SMS
+    if (code === '123456') {
+      return success(res, null, 'Téléphone vérifié avec succès');
+    }
+    return error(res, 'Code incorrect', 400);
+  } catch (err) {
+    console.error('verifierTelephone error:', err);
+    return error(res, 'Erreur serveur', 500);
+  }
+};
+
+// ─── LISTE ÉQUIPEMENTS ────────────────────────────────────
+const getEquipements = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      'SELECT id, code_equipement, nom, localisation, type FROM equipements WHERE actif = 1 ORDER BY nom'
+    );
+    return success(res, rows, 'Équipements récupérés');
+  } catch (err) {
+    console.error('getEquipements error:', err);
+    return error(res, 'Erreur serveur', 500);
+  }
+};
+
 module.exports = {
   getUsers, getUserById, createUser,
-  updateUser, toggleUserActif, resetMotDePasse, getRoles
+  updateUser, toggleUserActif, resetMotDePasse,
+  getRoles, updateTelephone, verifierTelephone, getEquipements,
 };
