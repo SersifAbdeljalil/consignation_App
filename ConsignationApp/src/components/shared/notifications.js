@@ -111,7 +111,7 @@ export default function Notifications({ navigation }) {
     <View style={S.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.greenDark} />
 
-      {/* Header */}
+    
       <View style={S.header}>
         <TouchableOpacity style={S.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={22} color={COLORS.white} />
